@@ -1,6 +1,6 @@
 import { PlanResponse, ChecklistItem, RefinePromptResponse } from '@/types';
 
-const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || '/api';
 
 function assertPlanResponse(data: any): asserts data is PlanResponse & { patch_prompt?: string } {
   if (!data || typeof data.plan !== 'string' || !Array.isArray(data.checklist)) {
@@ -16,7 +16,7 @@ function assertRefineResponse(data: any): asserts data is RefinePromptResponse {
 
 export const llmService = {
   async generatePlan(idea: string, failureTags: string[] = [], heuristics: string[] = []): Promise<PlanResponse & { patch_prompt?: string }> {
-    const res = await fetch(`${API_BASE}/api/llm/plan`, {
+  const res = await fetch(`${API_BASE}/llm/plan`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idea, failure_tags: failureTags, heuristics }),
@@ -44,7 +44,7 @@ If a test is easy, add/adjust one minimal test. Keep diff small.`;
   },
 
   async refinePrompt(planSummary: string, checklistStatus: string, failureReasons: string[], heuristics: string[]): Promise<RefinePromptResponse> {
-    const res = await fetch(`${API_BASE}/api/llm/refine`, {
+  const res = await fetch(`${API_BASE}/llm/refine`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

@@ -2,7 +2,6 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
-import fetch from 'node-fetch';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
