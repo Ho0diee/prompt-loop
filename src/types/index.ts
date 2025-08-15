@@ -10,6 +10,18 @@ export interface Update {
   summary: string;
   createdAt: string;
   fileList?: string[];
+  type?: 'normal' | 'quickEdit';
+  quickEditData?: QuickEditData;
+}
+
+export interface QuickEditData {
+  file: string;
+  anchor: string;
+  before: string;
+  after: string;
+  occurrenceCount: number;
+  diffPreview: string;
+  scope: 'single' | 'selected' | 'all';
 }
 
 export interface ChecklistItem {

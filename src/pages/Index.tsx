@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Update, ChecklistItem, Heuristic } from '@/types';
+import { Update, ChecklistItem, Heuristic, QuickEditData } from '@/types';
 import { storage } from '@/lib/storage';
 import { llmService } from '@/lib/llm-service';
 import { UpdateHistory } from '@/components/UpdateHistory';
@@ -222,6 +222,37 @@ const Index = () => {
     }
   };
 
+  const handleCreateQuickEdit = (quickEditData: QuickEditData) => {
+    const newUpdate: Update = {
+      id: generateUniqueId(),
+      idea: `Quick edit: ${quickEditData.before} → ${quickEditData.after}`,
+      plan: `Surgical change in ${quickEditData.file}`,
+      checklist: [{
+        id: generateUniqueId(),
+        step: `Apply ${quickEditData.scope} change`,
+        why: "Fast surgical edit with precise control",
+        expected: "Change applied without side effects",
+        status: 'pending' as const
+      }],
+      status: 'pending',
+      promptUsed: `Surgical change: In ${quickEditData.file}, change "${quickEditData.before}" to "${quickEditData.after}". Keep diff minimal.`,
+      summary: `Quick edit: ${quickEditData.file} (${quickEditData.before} → ${quickEditData.after})`,
+      createdAt: new Date().toISOString(),
+      type: 'quickEdit',
+      quickEditData
+    };
+
+    setUpdates(prev => [newUpdate, ...prev]);
+    setCurrentUpdate(newUpdate);
+    storage.saveUpdate(newUpdate);
+    storage.setCurrentUpdate(newUpdate);
+
+    toast({
+      title: "Quick edit created",
+      description: "Review diff and copy to apply changes",
+    });
+  };
+
   return (
     <div className="h-screen bg-background flex flex-col">
       {/* Header */}
@@ -273,6 +304,8 @@ const Index = () => {
           <ActiveChecklist
             currentUpdate={currentUpdate}
             heuristics={heuristics}
+            onCreateQuickEdit={handleCreateQuickEdit}
+            isGenerating={isGenerating}
           />
         </div>
       </div>
