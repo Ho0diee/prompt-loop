@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Update, ChecklistItem } from '@/types';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,7 @@ export const PatchWorkspace = ({
   const [showFailureInput, setShowFailureInput] = useState(false);
   const [selectedStepId, setSelectedStepId] = useState<string>('');
   const { toast } = useToast();
+  const reasonRef = useRef<HTMLTextAreaElement | null>(null);
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -46,14 +47,10 @@ export const PatchWorkspace = ({
 
   const handleMarkFail = (stepId: string) => {
     if (!failureReason.trim()) {
-      toast({
-        title: "Failure reason required",
-        description: "Please describe why this step failed",
-        variant: "destructive",
-      });
+      // Inline gating; show helper text under the input and do nothing
       return;
     }
-    
+
     onMarkFail(stepId, failureReason);
     setFailureReason('');
     setShowFailureInput(false);
@@ -67,8 +64,24 @@ export const PatchWorkspace = ({
 
   const currentStep = getCurrentStep();
   const allStepsComplete = currentUpdate?.checklist.every(item => item.status !== 'pending') ?? false;
-  const hasFailedWithoutReason = currentUpdate?.checklist.some(i => i.status === 'fail' && !i.failureReason?.trim()) ?? false;
+  // Gating booleans for Build Next Prompt
+  // hasFailed: any item is marked fail; hasReasonedFail: at least one failed item has a non-empty reason
+  const hasFailed = !!currentUpdate?.checklist.some(i => i.status === 'fail');
+  const hasReasonedFail = !!currentUpdate?.checklist.some(i => i.status === 'fail' && i.failureReason?.trim().length > 0);
   const activePrompt = currentUpdate?.updatedPrompt ?? currentUpdate?.promptUsed ?? '';
+
+  // Autofocus the reason input when it first appears
+  useEffect(() => {
+    if (showFailureInput) {
+      // Defer focus slightly to ensure element is mounted
+      setTimeout(() => reasonRef.current?.focus(), 0);
+    }
+  }, [showFailureInput, selectedStepId]);
+
+  const handleGenerate = () => {
+    if (isGenerating || !hasFailed || !hasReasonedFail) return;
+    onGenerateNextPrompt();
+  };
 
   if (!currentUpdate) {
     return (
@@ -158,8 +171,12 @@ export const PatchWorkspace = ({
                   placeholder="Describe why this step failed (required)..."
                   value={failureReason}
                   onChange={(e) => setFailureReason(e.target.value)}
+                  ref={reasonRef}
                   className="min-h-20 bg-background border-destructive/30"
                 />
+                {!failureReason.trim() && (
+                  <p className="text-xs text-destructive mt-1">Reason is required</p>
+                )}
                 <div className="flex gap-2">
                   <Button
                     size="sm"
@@ -201,8 +218,8 @@ export const PatchWorkspace = ({
               </div>
               
               <Button
-                onClick={onGenerateNextPrompt}
-                disabled={isGenerating || hasFailedWithoutReason}
+                onClick={handleGenerate}
+                disabled={isGenerating || !hasFailed || !hasReasonedFail}
                 className="bg-gradient-primary hover:opacity-90"
               >
                 {isGenerating ? (
@@ -213,8 +230,8 @@ export const PatchWorkspace = ({
                 {isGenerating ? 'Generating...' : 'Build Next Prompt'}
               </Button>
             </div>
-            {hasFailedWithoutReason && (
-              <p className="text-xs text-destructive mt-2">Provide a failure reason for each failed step to enable refining.</p>
+            {hasFailed && !hasReasonedFail && (
+              <p className="text-xs text-destructive mt-2">Add a brief reason to at least one failed step to build the next prompt.</p>
             )}
           </Card>
         )}
