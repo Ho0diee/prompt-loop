@@ -53,9 +53,11 @@ const Index = () => {
       }));
 
       const firstStep = checklistItems[0];
-      const initialPrompt = firstStep 
-        ? await llmService.generatePatchPrompt(firstStep, planResponse.surgical_constraints)
-        : '';
+      const initialPrompt = planResponse && (planResponse as any).patch_prompt
+        ? (planResponse as any).patch_prompt as string
+        : firstStep
+          ? await llmService.generatePatchPrompt(firstStep, planResponse.surgical_constraints)
+          : '';
 
       const newUpdate: Update = {
         id: generateUniqueId(),
@@ -162,9 +164,34 @@ const Index = () => {
     setIsGenerating(true);
     
     try {
+      const hasFailures = currentUpdate.checklist.some(item => item.status === 'fail');
       const nextPendingStep = currentUpdate.checklist.find(item => item.status === 'pending');
-      
-      if (nextPendingStep) {
+
+      if (hasFailures) {
+        const failureReasons = currentUpdate.checklist
+          .filter(item => item.status === 'fail')
+          .map(item => item.failureReason)
+          .filter(Boolean) as string[];
+
+        const heuristicPatterns = heuristics.map(h => h.pattern);
+        const refinedResponse = await llmService.refinePrompt(
+          currentUpdate.summary,
+          `${currentUpdate.checklist.filter(i => i.status === 'pass').length}/${currentUpdate.checklist.length} passed`,
+          failureReasons,
+          heuristicPatterns
+        );
+
+        const updatedUpdate: Update = {
+          ...currentUpdate,
+          promptUsed: refinedResponse.updated_prompt,
+          updatedPrompt: refinedResponse.updated_prompt
+        };
+
+        setCurrentUpdate(updatedUpdate);
+        setUpdates(prev => prev.map(u => u.id === updatedUpdate.id ? updatedUpdate : u));
+        storage.saveUpdate(updatedUpdate);
+        storage.setCurrentUpdate(updatedUpdate);
+      } else if (nextPendingStep) {
         // Generate prompt for next step
         const constraints = ["Keep existing patterns", "Minimal changes only", "Preserve working code"];
         const prompt = await llmService.generatePatchPrompt(nextPendingStep, constraints);
@@ -179,32 +206,25 @@ const Index = () => {
         storage.saveUpdate(updatedUpdate);
         storage.setCurrentUpdate(updatedUpdate);
       } else {
-        // Refine based on failures
-        const failureReasons = currentUpdate.checklist
-          .filter(item => item.status === 'fail')
-          .map(item => item.failureReason)
-          .filter(Boolean) as string[];
+        // No failures and no pending steps -> refine to propose next iteration
+        const heuristicPatterns = heuristics.map(h => h.pattern);
+        const refinedResponse = await llmService.refinePrompt(
+          currentUpdate.summary,
+          `${currentUpdate.checklist.filter(i => i.status === 'pass').length}/${currentUpdate.checklist.length} passed`,
+          [],
+          heuristicPatterns
+        );
 
-        if (failureReasons.length > 0) {
-          const heuristicPatterns = heuristics.map(h => h.pattern);
-          const refinedResponse = await llmService.refinePrompt(
-            currentUpdate.summary,
-            `${currentUpdate.checklist.filter(i => i.status === 'pass').length}/${currentUpdate.checklist.length} passed`,
-            failureReasons,
-            heuristicPatterns
-          );
+        const updatedUpdate: Update = {
+          ...currentUpdate,
+          promptUsed: refinedResponse.updated_prompt,
+          updatedPrompt: refinedResponse.updated_prompt
+        };
 
-          const updatedUpdate: Update = {
-            ...currentUpdate,
-            promptUsed: refinedResponse.updated_prompt,
-            updatedPrompt: refinedResponse.updated_prompt
-          };
-
-          setCurrentUpdate(updatedUpdate);
-          setUpdates(prev => prev.map(u => u.id === updatedUpdate.id ? updatedUpdate : u));
-          storage.saveUpdate(updatedUpdate);
-          storage.setCurrentUpdate(updatedUpdate);
-        }
+        setCurrentUpdate(updatedUpdate);
+        setUpdates(prev => prev.map(u => u.id === updatedUpdate.id ? updatedUpdate : u));
+        storage.saveUpdate(updatedUpdate);
+        storage.setCurrentUpdate(updatedUpdate);
       }
 
       toast({

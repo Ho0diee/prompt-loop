@@ -1,95 +1,62 @@
 import { PlanResponse, ChecklistItem, RefinePromptResponse } from '@/types';
 
-// Mock LLM service - in a real app, this would call an actual LLM API
-export const llmService = {
-  generatePlan: async (idea: string, failureTags: string[] = [], heuristics: string[] = []): Promise<PlanResponse> => {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    // Mock response based on the idea
-    const mockChecklist = [
-      {
-        step: "Set up component structure",
-        why: "Need foundation before adding functionality",
-        expected: "Component renders without errors"
-      },
-      {
-        step: "Implement core logic",
-        why: "Main feature implementation",
-        expected: "Feature works as intended"
-      },
-      {
-        step: "Add error handling",
-        why: "Prevent crashes and improve UX",
-        expected: "Graceful error states displayed"
-      },
-      {
-        step: "Write basic test",
-        why: "Ensure functionality is verified",
-        expected: "Test passes consistently"
-      }
-    ];
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
 
-    return {
-      plan: `Implement ${idea} with minimal changes to existing codebase, focusing on surgical edits and maintaining current patterns.`,
-      checklist: mockChecklist.slice(0, Math.min(4, Math.max(2, Math.ceil(Math.random() * 4)))),
-      surgical_constraints: [
-        "Only add necessary files",
-        "Keep existing styles and conventions",
-        "Maintain current TypeScript patterns",
-        "Add minimal test coverage"
-      ]
-    };
+function assertPlanResponse(data: any): asserts data is PlanResponse & { patch_prompt?: string } {
+  if (!data || typeof data.plan !== 'string' || !Array.isArray(data.checklist)) {
+    throw new Error('Invalid plan response shape');
+  }
+}
+
+function assertRefineResponse(data: any): asserts data is RefinePromptResponse {
+  if (!data || typeof data.updated_prompt !== 'string') {
+    throw new Error('Invalid refine response shape');
+  }
+}
+
+export const llmService = {
+  async generatePlan(idea: string, failureTags: string[] = [], heuristics: string[] = []): Promise<PlanResponse & { patch_prompt?: string }> {
+    const res = await fetch(`${API_BASE}/api/llm/plan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idea, failure_tags: failureTags, heuristics }),
+    });
+    if (!res.ok) throw new Error(`Plan request failed: ${res.status}`);
+    const data = await res.json();
+    assertPlanResponse(data);
+    return data;
   },
 
-  generatePatchPrompt: async (step: ChecklistItem, constraints: string[]): Promise<string> => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
+  async generatePatchPrompt(step: ChecklistItem, constraints: string[]): Promise<string> {
+    // Generate prompt locally using step + constraints to avoid needing another endpoint
     return `Surgical change: ${step.step}
 
-Only add/change: The specific components and functions needed for "${step.step}". 
+Only add/change: The specific components and functions needed for "${step.step}".
 Don't touch: Existing styles, unrelated components, or configuration files.
 Keep styles/conventions: Use existing design patterns and component structure.
 
 Target: ${step.expected}
 Reason: ${step.why}
 
-Constraints:
-${constraints.map(c => `- ${c}`).join('\n')}
+Constraints:\n${constraints.map((c) => `- ${c}`).join('\n')}
 
 If a test is easy, add/adjust one minimal test. Keep diff small.`;
   },
 
-  refinePrompt: async (
-    lastSummary: string,
-    checklistStatus: string,
-    failureReasons: string[],
-    heuristics: string[]
-  ): Promise<RefinePromptResponse> => {
-    await new Promise(resolve => setTimeout(resolve, 1200));
-    
-    return {
-      updated_prompt: `Surgical change: ${lastSummary} (refined)
-
-Address failure: ${failureReasons.join(', ')}
-Only add/change: The minimal fix for the specific failure.
-Don't touch: Working components or unrelated code.
-
-Additional guardrails:
-- Verify types match interfaces
-- Test the exact failure scenario
-- Keep changes under 50 lines
-
-If a test is easy, add/adjust one minimal test. Keep diff small.`,
-      reasons_for_changes: [
-        "Added specific failure context",
-        "Narrowed scope to exact issue",
-        "Added type safety guardrails"
-      ],
-      additional_checks: [
-        "Run TypeScript compiler check",
-        "Test the specific failure scenario"
-      ]
-    };
-  }
+  async refinePrompt(planSummary: string, checklistStatus: string, failureReasons: string[], heuristics: string[]): Promise<RefinePromptResponse> {
+    const res = await fetch(`${API_BASE}/api/llm/refine`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        plan: `${planSummary} | Status: ${checklistStatus}`,
+        check_results: checklistStatus,
+        failure_notes: failureReasons,
+        heuristics,
+      }),
+    });
+    if (!res.ok) throw new Error(`Refine request failed: ${res.status}`);
+    const data = await res.json();
+    assertRefineResponse(data);
+    return data;
+  },
 };

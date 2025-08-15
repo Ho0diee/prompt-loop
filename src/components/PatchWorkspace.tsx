@@ -67,6 +67,8 @@ export const PatchWorkspace = ({
 
   const currentStep = getCurrentStep();
   const allStepsComplete = currentUpdate?.checklist.every(item => item.status !== 'pending') ?? false;
+  const hasFailedWithoutReason = currentUpdate?.checklist.some(i => i.status === 'fail' && !i.failureReason?.trim()) ?? false;
+  const activePrompt = currentUpdate?.updatedPrompt ?? currentUpdate?.promptUsed ?? '';
 
   if (!currentUpdate) {
     return (
@@ -97,7 +99,7 @@ export const PatchWorkspace = ({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => copyToClipboard(currentUpdate.promptUsed)}
+              onClick={() => copyToClipboard(activePrompt)}
               className="border-primary/30 hover:bg-primary/10"
             >
               <Copy className="h-4 w-4 mr-2" />
@@ -107,7 +109,7 @@ export const PatchWorkspace = ({
           
           <div className="bg-secondary/50 rounded-lg p-3 font-mono text-sm">
             <pre className="whitespace-pre-wrap text-foreground">
-              {currentUpdate.promptUsed || 'No prompt generated yet'}
+              {activePrompt || 'No prompt generated yet'}
             </pre>
           </div>
         </Card>
@@ -200,7 +202,7 @@ export const PatchWorkspace = ({
               
               <Button
                 onClick={onGenerateNextPrompt}
-                disabled={isGenerating}
+                disabled={isGenerating || hasFailedWithoutReason}
                 className="bg-gradient-primary hover:opacity-90"
               >
                 {isGenerating ? (
@@ -211,6 +213,9 @@ export const PatchWorkspace = ({
                 {isGenerating ? 'Generating...' : 'Build Next Prompt'}
               </Button>
             </div>
+            {hasFailedWithoutReason && (
+              <p className="text-xs text-destructive mt-2">Provide a failure reason for each failed step to enable refining.</p>
+            )}
           </Card>
         )}
       </div>

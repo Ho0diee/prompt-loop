@@ -15,7 +15,7 @@ export const IdeaInput = ({ onSubmitIdea, isGenerating }: IdeaInputProps) => {
   const handleSubmit = () => {
     if (idea.trim()) {
       onSubmitIdea(idea.trim());
-      setIdea('');
+      // Clear after submission completes in parent; keep text until then
     }
   };
 
